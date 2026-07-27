@@ -7,8 +7,12 @@
   "scripts": {
     "test": "node --disable-warning=ExperimentalWarning --test",
     "sim": "node src/sim.js",
+    "build": "cd web && npm ci && npm run build",
     "server": "node --disable-warning=ExperimentalWarning server.js",
     "start": "node --disable-warning=ExperimentalWarning server.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
   },
   "dependencies": {
     "express": "^4.21.2",

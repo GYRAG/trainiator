@@ -1,0 +1,10 @@
+# Keep the build context small and secret-free. Deps are reinstalled in-image;
+# web/dist is rebuilt; the real .env and demo DB must never enter the image.
+node_modules
+web/node_modules
+web/dist
+data
+.git
+.env
+.env.*
+*.log

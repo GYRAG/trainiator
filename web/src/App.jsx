@@ -5,9 +5,9 @@ import { TrainScene } from './TrainScene.jsx';
 import { LiveBets } from './LiveBets.jsx';
 import * as sound from './sound.js';
 
-const short = (hex) => (hex ? `${hex.slice(0, 12)}…${hex.slice(-8)}` : '—');
 const money = (n) => (typeof n === 'number' ? n.toFixed(2) : '—');
 const pillClass = (v) => (v >= 10 ? 'gold' : v >= 2 ? 'green' : 'red');
+const MAX_BET = 10000; // mirror the server cap (engine.js) so the client fails fast, not on rejection
 
 function playerId() {
   let id = localStorage.getItem('trainiator_pid');
@@ -26,55 +26,71 @@ async function verifyRound({ serverSeed, roundId, commitHash, crashPoint }) {
   return { hashOk: hex === commitHash, crashOk: Math.abs(crash - crashPoint) < 1e-9 };
 }
 
-function VerifyModal({ reveal, onClose }) {
-  const [res, setRes] = useState(null);
-  useEffect(() => { if (reveal) verifyRound(reveal).then(setRes); }, [reveal]);
-  const ok = res && res.hashOk && res.crashOk;
+// Shared modal shell: role/aria-modal for assistive tech, Escape-to-close +
+// backdrop-click for dismissable ones, and initial focus moved into the dialog.
+function Modal({ titleId, onClose, dismissable = true, children }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    ref.current?.focus();
+    if (!dismissable) return;
+    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose, dismissable]);
   return (
-    <div className="modal" onClick={onClose}>
-      <motion.div className="modal-card" onClick={(e) => e.stopPropagation()} initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
-        <div className="modal-title">Provably Fair · departure #{reveal?.roundId}</div>
-        <p className="muted">The crash point is committed (hashed) before bets, then derived from the seed revealed after. Re-derived here in your browser:</p>
-        <div className="kv"><span>commit hash</span><span className="mono">{short(reveal?.commitHash)}</span></div>
-        <div className="kv"><span>revealed seed</span><span className="mono">{short(reveal?.serverSeed)}</span></div>
-        <div className="kv"><span>crash point</span><span>{reveal?.crashPoint?.toFixed(2)}x</span></div>
-        <div className={`verify-result ${ok ? 'ok' : res ? 'bad' : ''}`}>{!res ? 'verifying…' : ok ? '✓ verified — hash matches & crash point re-derives exactly' : '✗ mismatch'}</div>
-        <button className="btn ghost" onClick={onClose}>Close</button>
+    <div className="modal" onClick={dismissable ? onClose : undefined}>
+      <motion.div className="modal-card" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={ref} tabIndex={-1} onClick={(e) => e.stopPropagation()} initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
+        {children}
       </motion.div>
     </div>
+  );
+}
+
+function VerifyModal({ reveal, onClose }) {
+  const [res, setRes] = useState(null);
+  const [copied, setCopied] = useState('');
+  useEffect(() => { if (reveal) verifyRound(reveal).then(setRes); }, [reveal]);
+  const ok = res && res.hashOk && res.crashOk;
+  const copy = (field, text) => { if (text && navigator.clipboard) { navigator.clipboard.writeText(text); setCopied(field); setTimeout(() => setCopied(''), 1200); } };
+  return (
+    <Modal titleId="verify-title" onClose={onClose}>
+      <div className="modal-title" id="verify-title">Provably Fair · departure #{reveal?.roundId}</div>
+      <p className="muted">The crash point is committed (hashed) before bets, then derived from the seed revealed after. Full values below — click to copy and re-verify anywhere:</p>
+      <div className="kv col"><span>commit hash{copied === 'hash' ? ' · copied ✓' : ''}</span><code className="mono full" title="click to copy" onClick={() => copy('hash', reveal?.commitHash)}>{reveal?.commitHash || '—'}</code></div>
+      <div className="kv col"><span>revealed seed{copied === 'seed' ? ' · copied ✓' : ''}</span><code className="mono full" title="click to copy" onClick={() => copy('seed', reveal?.serverSeed)}>{reveal?.serverSeed || '—'}</code></div>
+      <div className="kv"><span>crash point</span><span>{reveal?.crashPoint?.toFixed(2)}x</span></div>
+      <div className={`verify-result ${ok ? 'ok' : res ? 'bad' : ''}`}>{!res ? 'verifying…' : ok ? '✓ verified — hash matches & crash point re-derives exactly' : '✗ mismatch'}</div>
+      <button className="btn ghost" onClick={onClose}>Close</button>
+    </Modal>
   );
 }
 
 function NameModal({ onStart }) {
   const [name, setName] = useState('');
   return (
-    <div className="modal">
-      <motion.div className="modal-card" initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
-        <div className="modal-title">All aboard</div>
-        <p className="muted">Pick a rider name. Fake currency only — it's a demo, no real money anywhere.</p>
-        <input className="name-input" autoFocus maxLength={20} placeholder="your name" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && name.trim() && onStart(name.trim())} />
-        <ul className="how-to">
-          <li>Place a bet during boarding.</li>
-          <li>Cash out before the train derails — the longer you wait, the higher the payout.</li>
-          <li>Every round is provably fair; verify any of them.</li>
-        </ul>
-        <button className="btn bet" disabled={!name.trim()} onClick={() => onStart(name.trim())}>Start riding</button>
-      </motion.div>
-    </div>
+    <Modal titleId="name-title" dismissable={false}>
+      <div className="modal-title" id="name-title">All aboard</div>
+      <p className="muted">Pick a rider name. Fake currency only — it's a demo, no real money anywhere.</p>
+      <input className="name-input" autoFocus maxLength={20} placeholder="your name" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && name.trim() && onStart(name.trim())} />
+      <ul className="how-to">
+        <li>Place a bet during boarding.</li>
+        <li>Cash out before the train derails — the longer you wait, the higher the payout.</li>
+        <li>Every round is provably fair; verify any of them.</li>
+      </ul>
+      <button className="btn bet" disabled={!name.trim()} onClick={() => onStart(name.trim())}>Start riding</button>
+    </Modal>
   );
 }
 
 function SettingsModal({ volume, setVolume, muted, setMuted, reduced, setReduced, onClose }) {
   return (
-    <div className="modal" onClick={onClose}>
-      <motion.div className="modal-card" onClick={(e) => e.stopPropagation()} initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
-        <div className="modal-title">Settings</div>
-        <label className="set-row"><span>Volume</span><input type="range" min="0" max="1" step="0.05" value={volume} onChange={(e) => setVolume(Number(e.target.value))} /></label>
-        <label className="set-row"><span>Mute</span><input type="checkbox" checked={muted} onChange={(e) => setMuted(e.target.checked)} /></label>
-        <label className="set-row"><span>Reduce motion</span><input type="checkbox" checked={reduced} onChange={(e) => setReduced(e.target.checked)} /></label>
-        <button className="btn ghost" onClick={onClose}>Close</button>
-      </motion.div>
-    </div>
+    <Modal titleId="settings-title" onClose={onClose}>
+      <div className="modal-title" id="settings-title">Settings</div>
+      <label className="set-row"><span>Volume</span><input type="range" min="0" max="1" step="0.05" value={volume} onChange={(e) => setVolume(Number(e.target.value))} /></label>
+      <label className="set-row"><span>Mute</span><input type="checkbox" checked={muted} onChange={(e) => setMuted(e.target.checked)} /></label>
+      <label className="set-row"><span>Reduce motion</span><input type="checkbox" checked={reduced} onChange={(e) => setReduced(e.target.checked)} /></label>
+      <button className="btn ghost" onClick={onClose}>Close</button>
+    </Modal>
   );
 }
 
@@ -98,6 +114,7 @@ const RoundsBar = memo(function RoundsBar({ history, onOpen }) {
 
 export default function App() {
   const [state, setState] = useState(null);
+  const [connected, setConnected] = useState(true); // optimistic: the socket connects at module load, often before we subscribe; the banner is for real drops (onDisconnect)
   const [balance, setBalance] = useState(null);
   const [activeBet, setActiveBet] = useState(null);
   const [stats, setStats] = useState({ streak: null, freeBets: 0 });
@@ -129,9 +146,11 @@ export default function App() {
 
   useEffect(() => {
     const hello = () => { if (nameRef.current) socket.emit('hello', { id: pid.current, name: nameRef.current }); };
-    const onConnect = hello;
+    const onConnect = () => { setConnected(true); hello(); };
+    const onDisconnect = () => setConnected(false);
     const onState = (s) => {
       liveMultiplierRef.current = s.multiplier ?? 1;
+      if (s.phase === 'running') sound.setChugRate(s.multiplier ?? 1); // engine hum speeds up with the climb
       if (s.phase === 'crashed') reveals.current.set(s.roundId, { roundId: s.roundId, commitHash: s.commitHash, serverSeed: s.serverSeed, crashPoint: s.crashPoint });
       setState(s);
     };
@@ -157,21 +176,25 @@ export default function App() {
         setMessage(`derailed @ ${r.crashPoint.toFixed(2)}x · −${money(r.lost)}`);
       } else if (r.type === 'topup') addToast(`Topped up +${money(r.amount)}`, 'win');
     };
-    socket.on('connect', onConnect); socket.on('state', onState); socket.on('wallet', onWallet); socket.on('stats', onStats);
+    socket.on('connect', onConnect); socket.on('disconnect', onDisconnect); socket.on('state', onState); socket.on('wallet', onWallet); socket.on('stats', onStats);
     socket.on('riders', onRiders); socket.on('presence', onPresence); socket.on('leaderboard', onBoard); socket.on('result', onResult);
     if (socket.connected) hello();
-    return () => { socket.off('connect', onConnect); socket.off('state', onState); socket.off('wallet', onWallet); socket.off('stats', onStats); socket.off('riders', onRiders); socket.off('presence', onPresence); socket.off('leaderboard', onBoard); socket.off('result', onResult); };
+    return () => { socket.off('connect', onConnect); socket.off('disconnect', onDisconnect); socket.off('state', onState); socket.off('wallet', onWallet); socket.off('stats', onStats); socket.off('riders', onRiders); socket.off('presence', onPresence); socket.off('leaderboard', onBoard); socket.off('result', onResult); };
   }, []);
 
   const phase = state?.phase ?? 'connecting';
-  useEffect(() => { if (phase === 'running') sound.whistle(); else if (phase === 'crashed') sound.derail(); }, [phase]);
+  useEffect(() => {
+    if (phase === 'running') { sound.whistle(); sound.startChug(); }
+    else { sound.stopChug(); if (phase === 'crashed') sound.derail(); }
+  }, [phase]);
   useEffect(() => { if (state?.phase === 'betting') { setActiveBet(null); activeBetRef.current = null; setMessage(''); bettingTotal.current = Math.max(1, (state.bettingEndsAt - Date.now()) / 1000); } }, [state?.roundId]);
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 100); return () => clearInterval(id); }, []);
   useEffect(() => { if (win) { const t = setTimeout(() => setWin(null), 1100); return () => clearTimeout(t); } }, [win]);
 
   const multiplier = state?.multiplier ?? 1;
+  const mScale = phase === 'running' ? 1 + Math.min(1, (multiplier - 1) / 8) * 0.12 : 1; // hero number swells as it climbs
   const countdown = phase === 'betting' && state?.bettingEndsAt ? Math.max(0, (state.bettingEndsAt - now) / 1000) : null;
-  const canBet = phase === 'betting' && !activeBet && Number(stake) >= 1;
+  const canBet = phase === 'betting' && !activeBet && Number(stake) >= 1 && Number(stake) <= MAX_BET;
   const canCashOut = phase === 'running' && activeBet && activeBet.cashedAt == null && !activeBet.busted;
 
   const doUnlock = () => sound.unlock();
@@ -179,10 +202,17 @@ export default function App() {
   const placeBet = () => { doUnlock(); socket.emit('bet', { stake: Number(stake), autoCashout: auto === '' ? null : Number(auto) }); };
   const cashOut = () => socket.emit('cashout');
   const topUp = () => socket.emit('topup');
-  const bump = (d) => setStake((s) => String(Math.max(1, (Number(s) || 0) + d)));
+  const bump = (d) => setStake((s) => String(Math.min(MAX_BET, Math.max(1, (Number(s) || 0) + d))));
   const setMuted = (m) => { doUnlock(); setMutedState(m); sound.setMuted(m); };
   const setVolume = (v) => { doUnlock(); setVolumeState(v); sound.setVolume(v); if (muted && v > 0) setMuted(false); };
   const openVerify = (roundId) => { const rv = reveals.current.get(roundId); if (rv) setVerifyReveal(rv); };
+
+  // Spacebar cashes out mid-run — the genre-standard shortcut (ignored while typing in a field).
+  useEffect(() => {
+    const onKey = (e) => { if (e.code === 'Space' && canCashOut && e.target.tagName !== 'INPUT') { e.preventDefault(); cashOut(); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [canCashOut]);
 
   return (
     <MotionConfig reducedMotion={reduced ? 'always' : 'user'}>
@@ -197,6 +227,8 @@ export default function App() {
           {balance != null && balance < 10 ? <button className="topup-btn" onClick={topUp}>+ top up</button> : null}
         </header>
 
+        {!connected ? <div className="conn-banner" role="status">Connection lost — reconnecting…</div> : null}
+
         <RoundsBar history={state?.history} onOpen={() => { const last = [...reveals.current.values()].pop(); if (last) setVerifyReveal(last); }} />
 
         <div className="layout">
@@ -204,9 +236,9 @@ export default function App() {
 
           <section className="main-col">
             <section className={`stage phase-${phase}`}>
-              <TrainScene multiplierRef={liveMultiplierRef} phase={phase} crashPoint={phase === 'crashed' ? state.crashPoint : null} roundId={state?.roundId ?? 0} />
+              <TrainScene multiplierRef={liveMultiplierRef} phase={phase} crashPoint={phase === 'crashed' ? state.crashPoint : null} roundId={state?.roundId ?? 0} reduced={reduced} />
               <div className="stage-overlay">
-                <div className="multiplier">{multiplier.toFixed(2)}x</div>
+                <div className="multiplier" style={{ transform: `scale(${mScale})` }}>{multiplier.toFixed(2)}x</div>
                 <div className="phase-label">
                   {phase === 'betting' && countdown != null ? `boarding — ${countdown.toFixed(1)}s` : phase === 'crashed' ? 'flew the rails!' : phase}
                   {state?.roundId ? ` · departure #${state.roundId}` : ''}
@@ -221,7 +253,7 @@ export default function App() {
                 <label>stake
                   <div className="stake-row">
                     <button className="step" onClick={() => bump(-1)} disabled={!!activeBet}>−</button>
-                    <input type="number" min="1" step="1" value={stake} onChange={(e) => setStake(e.target.value)} disabled={!!activeBet} />
+                    <input type="number" min="1" max={MAX_BET} step="1" value={stake} onChange={(e) => setStake(Number(e.target.value) > MAX_BET ? String(MAX_BET) : e.target.value)} disabled={!!activeBet} />
                     <button className="step" onClick={() => bump(1)} disabled={!!activeBet}>+</button>
                   </div>
                   <div className="chips">{[10, 25, 50, 100].map((v) => <button key={v} className="chip-btn" onClick={() => setStake(String(v))} disabled={!!activeBet}>{v}</button>)}</div>
@@ -246,6 +278,8 @@ export default function App() {
             </div>
           </aside>
         </div>
+
+        <footer className="disclaimer">Demo · fake currency only — no real money, payments, or transactions. Every round is provably fair.</footer>
 
         <div className="toasts">
           <AnimatePresence>

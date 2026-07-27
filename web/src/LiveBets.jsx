@@ -74,7 +74,7 @@ function LiveBetsBase({ multiplier, phase, roundId, riders, myId, myBets, onVeri
                 <span className="rider-name">#{b.roundId}</span>
                 <span className="rider-stake">{money(b.stake)}</span>
                 <span className="rider-mult">{b.won ? `+${money(b.payout)}` : `−${money(b.stake)}`}</span>
-                <span className="rider-payout"><button className="verify-link" onClick={() => onVerify(b.roundId)}>✓</button></span>
+                <span className="rider-payout"><button className="verify-link" aria-label={`verify round #${b.roundId}`} title={`verify round #${b.roundId}`} onClick={() => onVerify(b.roundId)}>✓</button></span>
               </div>
             ))}
           </div>

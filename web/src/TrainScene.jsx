@@ -31,7 +31,7 @@ function drawCar(ctx, body, wheelImg, wheelXs, x, y, rotDeg, wheelAngle) {
   ctx.restore();
 }
 
-function TrainSceneBase({ multiplierRef, phase, roundId }) {
+function TrainSceneBase({ multiplierRef, phase, roundId, reduced = false }) {
   const root = useRef(null);
   const canvasRef = useRef(null);
   const phaseRef = useRef(phase);
@@ -40,6 +40,8 @@ function TrainSceneBase({ multiplierRef, phase, roundId }) {
   const imgs = useRef(null);
 
   useEffect(() => { phaseRef.current = phase; }, [phase]);
+  // Honor both the OS setting AND the in-app Settings toggle, kept in sync.
+  useEffect(() => { reduce.current = reduced || window.matchMedia('(prefers-reduced-motion: reduce)').matches; }, [reduced]);
 
   useGSAP(() => {
     reduce.current = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -187,4 +189,4 @@ function TrainSceneBase({ multiplierRef, phase, roundId }) {
   );
 }
 
-export const TrainScene = memo(TrainSceneBase, (a, b) => a.phase === b.phase && a.roundId === b.roundId);
+export const TrainScene = memo(TrainSceneBase, (a, b) => a.phase === b.phase && a.roundId === b.roundId && a.reduced === b.reduced);

@@ -4,6 +4,7 @@ import { socket } from './socket.js';
 import { TrainScene } from './TrainScene.jsx';
 import { LiveBets } from './LiveBets.jsx';
 import * as sound from './sound.js';
+import * as achievements from './achievements.js';
 
 const money = (n) => (typeof n === 'number' ? n.toFixed(2) : '—');
 const pillClass = (v) => (v >= 10 ? 'gold' : v >= 2 ? 'green' : 'red');
@@ -94,6 +95,27 @@ function SettingsModal({ volume, setVolume, muted, setMuted, reduced, setReduced
   );
 }
 
+function AchievementsModal({ unlocked, onClose }) {
+  return (
+    <Modal titleId="ach-title" onClose={onClose}>
+      <div className="modal-title" id="ach-title">Achievements · {unlocked.size}/{achievements.ACHIEVEMENTS.length}</div>
+      <div className="ach-grid">
+        {achievements.ACHIEVEMENTS.map((a) => {
+          const got = unlocked.has(a.id);
+          return (
+            <div className={`ach-card ${got ? 'got' : 'locked'}`} key={a.id}>
+              <span className="ach-icon">{got ? a.icon : '🔒'}</span>
+              <span className="ach-title-s">{a.title}</span>
+              <span className="ach-desc">{a.desc}</span>
+            </div>
+          );
+        })}
+      </div>
+      <button className="btn ghost" onClick={onClose}>Close</button>
+    </Modal>
+  );
+}
+
 const RoundsBar = memo(function RoundsBar({ history, onOpen }) {
   const items = [...(history ?? [])].reverse();
   return (
@@ -133,6 +155,8 @@ export default function App() {
   const [reduced, setReduced] = useState(false);
   const [verifyReveal, setVerifyReveal] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAch, setShowAch] = useState(false);
+  const [unlocked, setUnlocked] = useState(() => achievements.getUnlocked());
   const [name, setName] = useState(() => localStorage.getItem('trainiator_name') || '');
   const [showName, setShowName] = useState(() => !localStorage.getItem('trainiator_name'));
   const pid = useRef(playerId());
@@ -143,6 +167,7 @@ export default function App() {
   const nameRef = useRef(name); nameRef.current = name;
 
   const addToast = (text, kind = '') => { const id = Date.now() + Math.random(); setToasts((t) => [...t, { id, text, kind }]); setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3200); };
+  const grant = (id) => { if (achievements.unlock(id)) { setUnlocked(achievements.getUnlocked()); addToast(`🏆 ${achievements.title(id)} unlocked!`, 'reward'); } };
 
   useEffect(() => {
     const hello = () => { if (nameRef.current) socket.emit('hello', { id: pid.current, name: nameRef.current }); };
@@ -163,15 +188,16 @@ export default function App() {
       if (!r.ok) return setMessage(r.error || 'action failed');
       if (typeof r.balance === 'number') setBalance(r.balance);
       if ('streak' in r || 'freeBets' in r) setStats((p) => ({ streak: 'streak' in r ? r.streak : p.streak, freeBets: r.freeBets ?? p.freeBets }));
-      if (r.type === 'bet') { setActiveBet({ stake: r.stake, auto: r.autoCashout, cashedAt: null, payout: 0, busted: false, free: r.free, roundId: r.roundId }); activeBetRef.current = { stake: r.stake }; setMessage(`bet ${money(r.stake)} placed${r.free ? ' · 🎟 free' : ''}`); }
+      if (r.type === 'bet') { setActiveBet({ stake: r.stake, auto: r.autoCashout, cashedAt: null, payout: 0, busted: false, free: r.free, roundId: r.roundId }); activeBetRef.current = { stake: r.stake }; setMessage(`bet ${money(r.stake)} placed${r.free ? ' · 🎟 free' : ''}`); grant('first-ride'); if (achievements.bumpBets() >= 25) grant('conductor'); }
       else if (r.type === 'cashout') {
         setActiveBet((b) => (b ? { ...b, cashedAt: r.multiplier, payout: r.payout } : b));
         setWin({ payout: r.payout, id: Date.now() }); sound.cashDing(); addToast(`Cashed out ${r.multiplier.toFixed(2)}x · +${money(r.payout)}`, 'win');
         setMyBets((h) => [{ roundId: r.roundId, stake: activeBetRef.current?.stake ?? 0, won: true, payout: r.payout }, ...h].slice(0, 50));
+        grant('all-aboard'); if (r.multiplier >= 5) grant('express'); if (r.multiplier >= 10) grant('runaway'); if (r.multiplier >= 25) grant('full-steam'); if (r.streak?.type === 'win' && r.streak.count >= 3) grant('on-a-roll');
       } else if (r.type === 'crash') {
         setActiveBet((b) => (b ? { ...b, busted: true } : b));
         setMyBets((h) => [{ roundId: r.roundId, stake: r.lost, won: false }, ...h].slice(0, 50));
-        if (r.nearMiss) addToast('So close! 😩', 'miss');
+        if (r.nearMiss) { addToast('So close! 😩', 'miss'); grant('so-close'); }
         if (r.reward === 'freeBet') addToast('🎟 Free bet earned!', 'reward');
         setMessage(`derailed @ ${r.crashPoint.toFixed(2)}x · −${money(r.lost)}`);
       } else if (r.type === 'topup') addToast(`Topped up +${money(r.amount)}`, 'win');
@@ -205,7 +231,7 @@ export default function App() {
   const bump = (d) => setStake((s) => String(Math.min(MAX_BET, Math.max(1, (Number(s) || 0) + d))));
   const setMuted = (m) => { doUnlock(); setMutedState(m); sound.setMuted(m); };
   const setVolume = (v) => { doUnlock(); setVolumeState(v); sound.setVolume(v); if (muted && v > 0) setMuted(false); };
-  const openVerify = (roundId) => { const rv = reveals.current.get(roundId); if (rv) setVerifyReveal(rv); };
+  const openVerify = (roundId) => { const rv = reveals.current.get(roundId); if (rv) { setVerifyReveal(rv); grant('trust-verify'); } };
 
   // Spacebar cashes out mid-run — the genre-standard shortcut (ignored while typing in a field).
   useEffect(() => {
@@ -222,6 +248,7 @@ export default function App() {
           <span className="muted online">{presence} online</span>
           {stats.streak?.count > 1 ? <span className={`streak ${stats.streak.type}`}>{stats.streak.type === 'win' ? '🔥' : '❄️'} {stats.streak.count}{stats.streak.type === 'win' ? 'W' : 'L'}</span> : null}
           {stats.freeBets > 0 ? <span className="freebets">🎟 {stats.freeBets}</span> : null}
+          <button className="ach-btn" onClick={() => setShowAch(true)} title="Achievements">🏆 {unlocked.size}/{achievements.ACHIEVEMENTS.length}</button>
           <button className="icon-btn" onClick={() => setShowSettings(true)}>settings</button>
           <span className="balance">balance<strong>{money(balance)}</strong></span>
           {balance != null && balance < 10 ? <button className="topup-btn" onClick={topUp}>+ top up</button> : null}
@@ -229,7 +256,7 @@ export default function App() {
 
         {!connected ? <div className="conn-banner" role="status">Connection lost — reconnecting…</div> : null}
 
-        <RoundsBar history={state?.history} onOpen={() => { const last = [...reveals.current.values()].pop(); if (last) setVerifyReveal(last); }} />
+        <RoundsBar history={state?.history} onOpen={() => { const last = [...reveals.current.values()].pop(); if (last) { setVerifyReveal(last); grant('trust-verify'); } }} />
 
         <div className="layout">
           <LiveBets multiplier={multiplier} phase={phase} roundId={state?.roundId ?? 0} riders={riders} myId={pid.current} myBets={myBets} onVerify={openVerify} />
@@ -289,6 +316,7 @@ export default function App() {
 
         <AnimatePresence>{verifyReveal ? <VerifyModal reveal={verifyReveal} onClose={() => setVerifyReveal(null)} /> : null}</AnimatePresence>
         {showSettings ? <SettingsModal volume={volume} setVolume={setVolume} muted={muted} setMuted={setMuted} reduced={reduced} setReduced={setReduced} onClose={() => setShowSettings(false)} /> : null}
+        {showAch ? <AchievementsModal unlocked={unlocked} onClose={() => setShowAch(false)} /> : null}
         {showName ? <NameModal onStart={startName} /> : null}
       </div>
     </MotionConfig>

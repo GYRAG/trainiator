@@ -167,6 +167,18 @@ body::before { content: ''; position: fixed; inset: 0; pointer-events: none; z-i
 .conn-banner { font-family: var(--font-pixel); font-size: 12px; text-align: center; padding: 6px 10px; color: #14100a; background: var(--brass); border: 2px solid #000; box-shadow: 3px 3px 0 var(--shadow); }
 .disclaimer { text-align: center; font-size: 11px; color: var(--taupe); letter-spacing: 0.04em; padding-top: 10px; margin-top: 4px; border-top: 1px solid var(--line-soft); }
 
+/* ---------- achievements ---------- */
+.ach-btn { background: var(--panel); border: 2px solid var(--line); color: var(--brass-bright); font-family: var(--font-pixel); font-size: 12px; padding: 4px 8px; cursor: pointer; box-shadow: 2px 2px 0 var(--shadow); font-variant-numeric: tabular-nums; }
+.ach-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-height: 58vh; overflow-y: auto; scrollbar-width: thin; }
+.ach-card { border: 2px solid var(--line-soft); background: var(--panel-2); padding: 10px; display: flex; flex-direction: column; gap: 3px; }
+.ach-card.got { border-color: var(--brass); }
+.ach-card.locked { opacity: 0.5; }
+.ach-icon { font-size: 22px; line-height: 1; }
+.ach-title-s { font-family: var(--font-pixel); font-size: 12px; color: var(--cream); }
+.ach-card.got .ach-title-s { color: var(--brass-bright); }
+.ach-desc { font-size: 11px; color: var(--taupe); }
+@media (max-width: 520px) { .ach-grid { grid-template-columns: 1fr; } }
+
 /* full, copyable seed/hash in the verify modal (was truncated, so unverifiable) */
 .kv.col { flex-direction: column; align-items: stretch; gap: 4px; }
 .mono.full { display: block; word-break: break-all; cursor: pointer; font-size: 11px; line-height: 1.45; color: var(--cream-dim); background: #0c0d07; border: 1px solid var(--line-soft); padding: 6px 8px; }

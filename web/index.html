@@ -5,16 +5,39 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Trainiator — provably-fair crash game</title>
     <meta name="description" content="Trainiator — a provably-fair, train-themed crash game. Board before departure, cash out before the train flies the rails. Fake currency only, no real money." />
+    <meta name="robots" content="index, follow" />
     <meta name="theme-color" content="#101109" />
     <!-- Train emoji as an inline SVG favicon (no asset request). -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>%F0%9F%9A%82</text></svg>" />
-    <!-- Social unfurl. og:image must be an ABSOLUTE url in prod to render on scrapers -->
-    <!-- e.g. https://your-domain/assets/loco.png — set it once you have the domain. -->
+
+    <!-- Social unfurl. AFTER DEPLOY, add these ABSOLUTE-url tags on your domain so -->
+    <!-- links render on scrapers that don't run JS (uncomment + set the domain):    -->
+    <!--   <link rel="canonical" href="https://your-domain/" />                       -->
+    <!--   <meta property="og:url" content="https://your-domain/" />                  -->
+    <!--   <meta property="og:image" content="https://your-domain/assets/loco.png" /> -->
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Trainiator" />
     <meta property="og:title" content="Trainiator — provably-fair crash game" />
     <meta property="og:description" content="Board before departure, cash out before the train flies the rails. Fake-currency demo, provably fair every round." />
     <meta property="og:image" content="/assets/loco.png" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Trainiator — provably-fair crash game" />
+    <meta name="twitter:description" content="Board before departure, cash out before the train flies the rails. Provably fair every round." />
+
+    <!-- Structured data: classifies the page as a free browser game for search engines. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "VideoGame",
+        "name": "Trainiator",
+        "description": "A provably-fair, train-themed crash game. Fake currency only — no real money.",
+        "genre": "Crash game",
+        "applicationCategory": "GameApplication",
+        "operatingSystem": "Web Browser",
+        "gamePlatform": "Web Browser",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

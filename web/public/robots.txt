@@ -1,0 +1,6 @@
+# Trainiator — allow all crawlers.
+User-agent: *
+Allow: /
+
+# After you deploy, add your sitemap here, e.g.:
+# Sitemap: https://your-domain/sitemap.xml

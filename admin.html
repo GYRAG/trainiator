@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>Trainiator · Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Jost:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg:#101109; --panel:#191b12; --panel2:#20221a; --line:#3a3724; --line-soft:#2a281c;
+    --brass:#c9a24b; --brass-bright:#e6c877; --cream:#efe6d0; --cream-dim:#c9bd9e;
+    --taupe:#8f886e; --green:#5aa578; --oxblood:#c0563e; --shadow:rgba(0,0,0,.5);
+    --pixel:'Silkscreen', ui-monospace, monospace; --ui:'Jost', system-ui, sans-serif;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--cream); font-family:var(--ui); min-height:100vh; }
+  body::before { content:''; position:fixed; inset:0; pointer-events:none; box-shadow:inset 0 0 200px 40px rgba(0,0,0,.55); }
+  .wrap { max-width:980px; margin:0 auto; padding:28px 18px 60px; }
+  .head { display:flex; align-items:baseline; gap:14px; padding-bottom:14px; border-bottom:2px solid var(--line-soft); margin-bottom:20px; }
+  .head h1 { font-family:var(--pixel); font-size:22px; letter-spacing:.04em; margin:0; color:var(--brass-bright); text-shadow:2px 2px 0 #000; }
+  .head h1 span { color:var(--taupe); font-size:14px; }
+  .muted { color:var(--taupe); font-size:12px; }
+  #status { margin-left:auto; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; margin-bottom:20px; }
+  .card { border:2px solid var(--line); border-top:3px solid var(--brass); background:var(--panel); box-shadow:4px 4px 0 var(--shadow); padding:14px 16px; }
+  .card .label { font-family:var(--pixel); font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--taupe); }
+  .card .value { font-family:var(--pixel); font-size:24px; color:var(--brass-bright); margin-top:8px; word-break:break-word; }
+  .panel { border:2px solid var(--line); border-top:3px solid var(--brass); background:var(--panel); box-shadow:4px 4px 0 var(--shadow); padding:16px 18px; margin-bottom:18px; }
+  .panel h2 { font-family:var(--pixel); font-size:14px; color:var(--cream); margin:0 0 14px; letter-spacing:.04em; }
+  .bar-row { display:grid; grid-template-columns:88px 1fr 44px; gap:10px; align-items:center; margin:7px 0; font-size:13px; font-variant-numeric:tabular-nums; }
+  .bar-label { color:var(--cream-dim); }
+  .bar-track { height:14px; background:#0c0d07; border:1px solid var(--line); }
+  .bar-fill { display:block; height:100%; background:linear-gradient(90deg,var(--brass),var(--brass-bright)); transition:width .3s ease; }
+  .bar-count { text-align:right; color:var(--taupe); }
+  .board-row { display:grid; grid-template-columns:28px 1fr auto auto; gap:12px; align-items:center; padding:6px 0; border-bottom:1px solid var(--line-soft); font-size:14px; font-variant-numeric:tabular-nums; }
+  .board-rank { color:var(--taupe); font-family:var(--pixel); font-size:12px; }
+  .board-name { color:var(--cream-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .board-mult { color:var(--cream); }
+  .board-pay { color:var(--green); font-weight:600; }
+  .gate { position:fixed; inset:0; background:rgba(0,0,0,.7); display:flex; align-items:center; justify-content:center; }
+  .gate[hidden] { display:none; }
+  .gate-card { background:var(--panel); border:2px solid var(--line); border-top:3px solid var(--brass); box-shadow:6px 6px 0 var(--shadow); padding:22px; width:min(360px,90%); display:flex; flex-direction:column; gap:12px; }
+  .gate-title { font-family:var(--pixel); font-size:16px; color:var(--brass-bright); }
+  .gate input { background:#0c0d07; border:2px solid var(--line); color:var(--cream); padding:11px 12px; font-family:var(--pixel); font-size:15px; }
+  .gate button { background:var(--brass); color:#171106; border:2px solid #000; font-family:var(--pixel); font-size:14px; padding:11px; cursor:pointer; box-shadow:3px 3px 0 var(--shadow); }
+  .err { color:var(--oxblood); font-size:12px; min-height:14px; }
+  .foot { margin-top:24px; color:var(--taupe); font-size:11px; text-align:center; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="head"><h1>TRAINIATOR <span>admin</span></h1><span id="status" class="muted">connecting…</span></header>
+    <div class="cards" id="cards"></div>
+    <section class="panel"><h2>Cash-out distribution</h2><div id="dist"></div></section>
+    <section class="panel"><h2>Top wins today</h2><div id="board"></div></section>
+    <div class="foot">Demo · fake currency only · no real money or payments · auto-refreshes every 5s</div>
+  </div>
+  <div class="gate" id="gate" hidden>
+    <div class="gate-card">
+      <div class="gate-title">Admin access</div>
+      <input id="token" type="password" placeholder="admin token" autofocus />
+      <button id="go">Enter</button>
+      <div class="err" id="gateErr"></div>
+    </div>
+  </div>
+<script>
+  const $ = (s) => document.querySelector(s);
+  let token = sessionStorage.getItem('trn_admin') || '';
+  const esc = (s) => { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; };
+  const num = (n) => Number(n || 0).toLocaleString();
+
+  async function load() {
+    try {
+      const res = await fetch('/admin/stats', { headers: { 'x-admin-token': token } });
+      if (res.status === 401) { $('#gate').hidden = false; if (token) $('#gateErr').textContent = 'wrong token'; return; }
+      $('#gate').hidden = true;
+      render(await res.json());
+      $('#status').textContent = 'updated ' + new Date().toLocaleTimeString();
+    } catch { $('#status').textContent = 'server offline'; }
+  }
+
+  function render(d) {
+    const cards = [
+      ['online now', d.online],
+      ['departure', '#' + d.roundId + ' · ' + d.phase],
+      ['sessions', num(d.sessions)],
+      ['avg bets / session', d.avgBetsPerSession],
+      ['avg session', Math.round((d.avgSessionSeconds / 60) * 10) / 10 + 'm'],
+    ];
+    $('#cards').innerHTML = cards.map(([l, v]) => `<div class="card"><div class="label">${l}</div><div class="value">${esc(String(v))}</div></div>`).join('');
+
+    const dist = d.cashoutDistribution || [];
+    const max = Math.max(1, ...dist.map((b) => b.count));
+    $('#dist').innerHTML = dist.map((b) => `<div class="bar-row"><span class="bar-label">${esc(b.label)}</span><span class="bar-track"><span class="bar-fill" style="width:${(b.count / max) * 100}%"></span></span><span class="bar-count">${b.count}</span></div>`).join('');
+
+    const lb = d.leaderboard || [];
+    $('#board').innerHTML = lb.length
+      ? lb.map((b, i) => `<div class="board-row"><span class="board-rank">${i + 1}</span><span class="board-name">${esc(b.name)}</span><span class="board-mult">${b.mult ? b.mult.toFixed(2) + 'x' : ''}</span><span class="board-pay">+${Number(b.payout).toFixed(2)}</span></div>`).join('')
+      : '<div class="muted">no wins yet today</div>';
+  }
+
+  $('#go').onclick = () => { token = $('#token').value.trim(); sessionStorage.setItem('trn_admin', token); $('#gateErr').textContent = ''; load(); };
+  $('#token').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#go').click(); });
+  load();
+  setInterval(load, 5000);
+</script>
+</body>
+</html>

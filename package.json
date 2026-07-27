@@ -1,0 +1,17 @@
+{
+  "name": "trainiator",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Trainiator - a provably-fair, train-themed crash game (portfolio/demo, fake currency only).",
+  "scripts": {
+    "test": "node --disable-warning=ExperimentalWarning --test",
+    "sim": "node src/sim.js",
+    "server": "node --disable-warning=ExperimentalWarning server.js",
+    "start": "node --disable-warning=ExperimentalWarning server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  }
+}

@@ -16,7 +16,22 @@ const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'trainiator-dev';
 
 const app = express();
 const httpServer = createServer(app);
-const io = new Server(httpServer, { cors: { origin: true } }); // dev; prod is same-origin
+const io = new Server(httpServer, {
+  // Prod is same-origin (client uses io()); dev goes through the Vite proxy — so no
+  // cross-origin is needed. CLIENT_ORIGIN opts one origin in only if you split hosts.
+  cors: { origin: process.env.CLIENT_ORIGIN || false },
+  maxHttpBufferSize: 1e4, // bet/cashout/hello are tiny; cap frames to reject abuse
+});
+
+// Minimal security headers. helmet + a real CSP is the upgrade path, but its default
+// CSP would block the SPA's inline styles / WS — these three cover the real risks
+// (MIME sniff, clickjacking, referrer leak) with no dep and no breakage.
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  next();
+});
 
 const db = createDb(process.env.DB_PATH || 'data/trainiator.sqlite');
 const retention = createRetention({ store: db });
@@ -97,6 +112,11 @@ app.get('/admin/stats', adminAuth, (_req, res) => {
 app.get('/admin', (_req, res) => res.sendFile(join(__dirname, 'admin.html')));
 
 app.use(express.static('web/dist')); // prod frontend; dev is served by Vite
+app.get('*', (_req, res) => res.sendFile(join(__dirname, 'web/dist/index.html'))); // SPA fallback: refresh / deep links
+
+// Log then exit so the platform restarts on a fatal error instead of running wedged.
+process.on('unhandledRejection', (err) => console.error('unhandledRejection', err));
+process.on('uncaughtException', (err) => { console.error('uncaughtException', err); process.exit(1); });
 
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {

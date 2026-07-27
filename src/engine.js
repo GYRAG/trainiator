@@ -161,57 +161,70 @@ export function createGame({ onState, config = {}, store = null, onPlayerResult 
 
     // Instant crash (1.00x) => crashMs is 0, end immediately.
     tickTimer = setInterval(() => {
-      const elapsed = (Date.now() - round.startedAt) / 1000;
-      if (elapsed * 1000 >= crashMs) return crash();
-      round.multiplier = multiplierAt(elapsed, cfg.k);
-      // Fire any auto-cash-outs whose target the multiplier just crossed.
-      let fired = false;
-      for (const [pid, bet] of bets) {
-        if (!bet.cashedOut && bet.auto != null && round.multiplier >= bet.auto) {
-          onPlayerResult?.(pid, settleWin(pid, bet, bet.auto));
-          fired = true;
+      try {
+        const elapsed = (Date.now() - round.startedAt) / 1000;
+        if (elapsed * 1000 >= crashMs) return crash();
+        round.multiplier = multiplierAt(elapsed, cfg.k);
+        // Fire any auto-cash-outs whose target the multiplier just crossed.
+        let fired = false;
+        for (const [pid, bet] of bets) {
+          if (!bet.cashedOut && bet.auto != null && round.multiplier >= bet.auto) {
+            onPlayerResult?.(pid, settleWin(pid, bet, bet.auto));
+            fired = true;
+          }
         }
+        if (fired) emitRiders();
+        emit();
+      } catch (err) {
+        console.error('tick error — forcing crash to recover the loop', err);
+        crash();
       }
-      if (fired) emitRiders();
-      emit();
     }, cfg.tickMs);
     if (crashMs === 0) crash();
   }
 
   function crash() {
+    if (!round || round.phase !== 'running') return; // idempotent: never settle a round twice
     clearInterval(tickTimer);
     tickTimer = null;
     round.phase = 'crashed';
     round.multiplier = round.crashPoint; // show the exact provably-fair value
-    store?.revealRound(round.roundId, round.serverSeed, round.crashPoint);
 
-    // Settle whoever is still in. Backstop: an auto target at/under the crash
-    // point is a WIN even if the tick loop didn't fire it (timing safety), so
-    // auto-cash-out outcomes are deterministic, not tick-alignment-dependent.
-    for (const [pid, bet] of bets) {
-      if (bet.cashedOut) continue;
-      if (bet.auto != null && bet.auto <= round.crashPoint) {
-        onPlayerResult?.(pid, settleWin(pid, bet, bet.auto));
-      } else {
-        bet.lost = true;
-        store?.settleBet(bet.betId, null, 0, false);
-        const balance = store ? store.getBalance(pid) : undefined;
-        // #1 COSMETIC near-miss: did the train derail just shy of their auto target?
-        // The crash point is untouched RNG; this only flags a genuinely close call.
-        const nearMiss =
-          cfg.nearMiss && bet.auto != null && round.crashPoint >= bet.auto - cfg.nearMissThreshold;
-        onPlayerResult?.(
-          pid,
-          withRetention(pid, { ok: true, type: 'crash', roundId: round.roundId, crashPoint: round.crashPoint, lost: bet.stake, balance, nearMiss }),
-        );
+    // A DB/callback error while settling must not freeze the loop: log it, then
+    // always advance to the next round below (history + emit + phaseTimer).
+    try {
+      store?.revealRound(round.roundId, round.serverSeed, round.crashPoint);
+
+      // Settle whoever is still in. Backstop: an auto target at/under the crash
+      // point is a WIN even if the tick loop didn't fire it (timing safety), so
+      // auto-cash-out outcomes are deterministic, not tick-alignment-dependent.
+      for (const [pid, bet] of bets) {
+        if (bet.cashedOut) continue;
+        if (bet.auto != null && bet.auto <= round.crashPoint) {
+          onPlayerResult?.(pid, settleWin(pid, bet, bet.auto));
+        } else {
+          bet.lost = true;
+          store?.settleBet(bet.betId, null, 0, false);
+          const balance = store ? store.getBalance(pid) : undefined;
+          // #1 COSMETIC near-miss: did the train derail just shy of their auto target?
+          // The crash point is untouched RNG; this only flags a genuinely close call.
+          const nearMiss =
+            cfg.nearMiss && bet.auto != null && round.crashPoint >= bet.auto - cfg.nearMissThreshold;
+          onPlayerResult?.(
+            pid,
+            withRetention(pid, { ok: true, type: 'crash', roundId: round.roundId, crashPoint: round.crashPoint, lost: bet.stake, balance, nearMiss }),
+          );
+        }
       }
+      emitRiders();
+    } catch (err) {
+      console.error('crash settlement error — advancing to next round anyway', err);
     }
-    emitRiders();
 
     history.push({ roundId: round.roundId, crashPoint: round.crashPoint });
     if (history.length > cfg.historyLen) history.shift();
     emit();
-    phaseTimer = setTimeout(startBetting, cfg.crashedMs);
+    phaseTimer = setTimeout(startBetting, cfg.crashedMs); // always advance the loop
   }
 
   return {

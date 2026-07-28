@@ -1,4 +1,4 @@
-# 🚂 Trainiator
+#  Trainiator
 
 **A provably-fair, real-time multiplayer crash game — with an authoritative server, a verifiable RNG, and a hand-built pixel Art-Deco world.**
 
@@ -52,7 +52,6 @@ Because SHA-256 is one-way, the published hash leaks nothing about the outcome �
 
 Two independent pieces of math drive the game: **where** the train derails (the crash-point distribution, `src/rng.js`) and **how fast** the multiplier climbs to get there (the growth curve, `src/curve.js`). They're kept separate on purpose — the crash point is committed up front and never depends on the animation.
 
-> GitHub renders the equations below with MathJax.
 
 ### 1 · A uniform draw from the hash
 

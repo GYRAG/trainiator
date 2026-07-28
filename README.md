@@ -8,6 +8,10 @@
 ![Vite](https://img.shields.io/badge/Vite-5-1e2a21?style=flat-square&logo=vite&logoColor=c9a24b)
 ![Provably&nbsp;Fair](https://img.shields.io/badge/Provably-Fair-5aa578?style=flat-square)
 
+<p align="center">
+  <img src="docs/train.png" alt="Trainiator — pixel Art-Deco steam train: coach, tender, and locomotive on the rails" width="720" />
+</p>
+
 > **▶ Live demo:** _add your deploy URL here_
 > **📹 Demo clip:** drop a ~6-second recording at `docs/demo.gif` — the train accelerating into the warp-blur past 7×, then jackknifing off the rails. It's the most striking six seconds of the project; then swap this line for `![Trainiator](docs/demo.gif)`.
 

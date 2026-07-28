@@ -9,7 +9,7 @@
 ![Provably&nbsp;Fair](https://img.shields.io/badge/Provably-Fair-5aa578?style=flat-square)
 
 <p align="center">
-  <img src="docs/train.png" alt="Trainiator — pixel Art-Deco steam train: coach, tender, and locomotive on the rails" width="720" />
+  <img src="docs/scene.png" alt="Trainiator — the pixel Art-Deco railway at dusk: station, hills, sunset, and the train at the platform" width="820" />
 </p>
 
 > **▶ Live demo:** _add your deploy URL here_

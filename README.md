@@ -44,14 +44,64 @@ sequenceDiagram
 
 Because SHA-256 is one-way, the published hash leaks nothing about the outcome — yet it commits the server to it. In the app, the **"✓ fair"** panel re-runs this entire derivation in your browser (`crypto.subtle`) and shows the **full seed and hash, click-to-copy**, so you can verify any round anywhere.
 
-**The house edge lives in exactly one place** (`src/rng.js`) and is applied as a haircut on *profit*, so it spreads smoothly across the curve instead of concentrating in 1.00× "rug pulls":
+**The house edge lives in exactly one place** (`src/rng.js`) and is applied as a smooth haircut on *profit* — never as surprise 1.00× "rug pulls". The full derivation of the crash distribution and the resulting return-to-player is below.
 
-```
-fair  = 1 / (1 - u)          # zero-edge curve: ≥ 1, median 2×, heavy tail
-crash = 1 + rtp · (fair - 1) # keep only `rtp` of the profit   (rtp = 0.94)
-```
+---
 
-This yields `RTP(m) = m·rtp / (rtp + m − 1) ≤ 1` at every cash-out target `m` — the house always holds a small, provable edge, and never an unfair one.
+## The math behind it
+
+Two independent pieces of math drive the game: **where** the train derails (the crash-point distribution, `src/rng.js`) and **how fast** the multiplier climbs to get there (the growth curve, `src/curve.js`). They're kept separate on purpose — the crash point is committed up front and never depends on the animation.
+
+> GitHub renders the equations below with MathJax.
+
+### 1 · A uniform draw from the hash
+
+The round's SHA-256 commitment doubles as the entropy source. Its first 13 hex characters (52 bits) are read as an integer and scaled to a uniform variable:
+
+$$u \in [0, 1), \qquad u = \frac{\operatorname{int}_{16}\big(\text{hash}[0{:}13]\big)}{2^{52}}$$
+
+(An optional `instantCrashRate` slice can be reserved for forced 1.00× crashes; it defaults to 0.)
+
+### 2 · The fair, zero-edge curve
+
+From $u$, the *fair* crash multiplier is
+
+$$X = \frac{1}{1 - u}$$
+
+the canonical crash distribution, whose survival function is clean:
+
+$$P(X > x) = P\!\left(u > 1 - \tfrac{1}{x}\right) = \frac{1}{x}, \qquad x \ge 1$$
+
+So the median is exactly **2×** (since $P(X > 2) = \tfrac{1}{2}$), with a heavy tail: $X$ exceeds 10× one time in ten, 100× one time in a hundred. It carries **zero** house edge — a bet cashed at $m$ wins with probability $1/m$ and pays $m$, for an expected return of exactly 1.
+
+### 3 · The house edge — a haircut on profit
+
+Instead of skimming with surprise instant crashes, the edge is a fixed haircut on the *profit* above 1×:
+
+$$\text{crash} = 1 + \text{rtp}\,(X - 1), \qquad \text{rtp} = 0.94$$
+
+The return-to-player at a cash-out target $m$ follows directly. You win iff the crash reaches $m$, i.e. $X \ge 1 + \tfrac{m-1}{\text{rtp}}$, so
+
+$$P(\text{win at } m) = \frac{\text{rtp}}{\text{rtp} + m - 1}, \qquad \operatorname{RTP}(m) = m \cdot P(\text{win}) = \frac{m\,\text{rtp}}{\text{rtp} + m - 1}$$
+
+Two properties fall out of this:
+
+- **The house is never at a disadvantage:** $\operatorname{RTP}(m) \le 1$ for every $m \ge 1$ (equality only at $m = 1$).
+- **The edge scales with ambition, smoothly** — ~0% right above 1×, **96.9%** at 2×, easing toward the floor of **94%** for high targets. No cliff, no rug-pull.
+
+The result is floored to two decimals and clamped to $\ge 1.00$. That flooring *alone* yields an instant 1.00× crash about **1%** of the time — $P(\text{crash} < 1.01) = 1 - \tfrac{1}{1.0106} \approx 0.0105$ — matching real crash games with no special-casing.
+
+### 4 · The growth curve
+
+Given a committed crash point, the multiplier climbs **exponentially** from 1.00×:
+
+$$m(t) = e^{k t}, \qquad k = 0.06$$
+
+and the round ends at the exact instant the curve reaches the pre-committed crash point — the inverse of the climb:
+
+$$t_{\text{crash}} = \frac{\ln(\text{crashPoint})}{k}$$
+
+At $k = 0.06$ that's ≈ 11.6 s to 2×, 26.8 s to 5×, and 38.4 s to 10×. The live value is broadcast every 100 ms purely for the animation; the crash fires at $t_{\text{crash}}$ on the committed number, never on a sampled overshoot.
 
 ---
 

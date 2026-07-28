@@ -1,0 +1,31 @@
+name: keep-alive
+
+# Pings the deployed app so Render's free tier doesn't spin the instance down
+# after 15 min of inactivity. Free for this repo (public repos get unlimited
+# Actions minutes). Not needed on an always-on host (Fly.io, Render paid).
+#
+# ACTIVATE: after deploying, add a repo variable RENDER_URL with your app's base
+# URL (Settings > Secrets and variables > Actions > Variables), e.g.
+#   RENDER_URL = https://trainiator.onrender.com
+# Until it's set, the job no-ops instead of failing.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # every 10 min (GitHub may delay runs under load)
+  workflow_dispatch: {}       # allow a manual run to test
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /healthz to keep the instance awake
+        run: |
+          url="${{ vars.RENDER_URL }}"
+          if [ -z "$url" ]; then
+            echo "RENDER_URL not set — skipping. Add it under Actions > Variables to enable."
+            exit 0
+          fi
+          code=$(curl -sS -m 30 -o /dev/null -w '%{http_code}' "${url%/}/healthz")
+          echo "pinged ${url%/}/healthz -> $code"
+          # Render returns 200 once awake; a cold start may briefly 502 — that's the wake-up itself.
+          [ "$code" = "200" ] || echo "non-200 ($code); likely a cold start that just woke it"

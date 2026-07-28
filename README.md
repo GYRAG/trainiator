@@ -1,95 +1,181 @@
-# Trainiator
+# 🚂 Trainiator
 
-Trainiator is a **provably-fair, train-themed crash game**. It is designed as a portfolio piece and a technical demonstration. 
+**A provably-fair, real-time multiplayer crash game — with an authoritative server, a verifiable RNG, and a hand-built pixel Art-Deco world.**
 
-**⚠️ Important:** This project uses **fake currency only**. There is no real money, no payments, and no financial transactions involved whatsoever.
+![Node](https://img.shields.io/badge/Node-22.x-1e2a21?style=flat-square&logo=node.js&logoColor=c9a24b)
+![React](https://img.shields.io/badge/React-18-1e2a21?style=flat-square&logo=react&logoColor=c9a24b)
+![Socket.IO](https://img.shields.io/badge/Socket.IO-4-1e2a21?style=flat-square&logo=socketdotio&logoColor=c9a24b)
+![Vite](https://img.shields.io/badge/Vite-5-1e2a21?style=flat-square&logo=vite&logoColor=c9a24b)
+![Provably&nbsp;Fair](https://img.shields.io/badge/Provably-Fair-5aa578?style=flat-square)
 
-## Features
+> **▶ Live demo:** _add your deploy URL here_
+> **📹 Demo clip:** drop a ~6-second recording at `docs/demo.gif` — the train accelerating into the warp-blur past 7×, then jackknifing off the rails. It's the most striking six seconds of the project; then swap this line for `![Trainiator](docs/demo.gif)`.
 
-- **Real-Time Multiplayer:** Built with Socket.io, broadcasting the live game state, riders, and crash multipliers to all connected clients.
-- **Provably Fair RNG:** A transparent, cryptographic commit/reveal scheme ensures the crash point is pre-determined and cannot be altered mid-game.
-- **Authoritative Server:** A single Node.js game loop acts as the source of truth, enforcing game rules, wallet balances, and betting mechanics.
-- **Persistent Local Database:** Uses SQLite to store user wallets, bet histories, round outcomes, and leaderboards.
-- **Modern Frontend:** Built with React 19, Vite, and GSAP/Framer Motion for smooth, cinematic animations.
-- **Retention & Pacing:** Includes cosmetic "near miss" notifications, variable betting windows, and a free-faucet for engagement testing without manipulating the core odds.
+> ⚠️ **Fake currency only.** No real money, payments, or financial transactions anywhere. This is a portfolio piece and technical demonstration.
+
+---
+
+## Why this project is interesting
+
+- **The server is the single source of truth.** One authoritative game loop owns the clock and decides every bet, cash-out, and crash. The client only *renders* — it can't cheat the outcome.
+- **The RNG is provably fair, and you can prove it in the browser.** A cryptographic commit/reveal scheme locks each crash point *before* bets and reveals the seed *after*, so anyone can re-derive the result and confirm it was never altered.
+- **The house edge is honest math, not rug-pulls.** The margin is a smooth haircut on profit rather than fake instant crashes (details below).
+- **Retention mechanics are quarantined from the RNG.** Streaks, near-miss flags, free bets, and variable pacing are cosmetic — none of them can reach the fairness code.
+- **A distinctive, hand-built aesthetic.** A GSAP-driven pixel Art-Deco railway (parallax hills, rolling wheels, warp-speed zoom-blur, a derailment) and fully *procedural* Web Audio — no neon, no template.
+
+---
+
+## Provably fair
+
+Trainiator uses a commit/reveal scheme so the crash point is fixed before anyone bets, and independently verifiable afterward.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant P as Player
+  participant S as Server
+  Note over S: generate a secret serverSeed (32 random bytes)
+  S->>P: publish commitHash = SHA-256(serverSeed : roundId)
+  Note over P,S: bets are placed — the crash point is already locked
+  Note over S: crashPoint is derived from that same hash
+  S->>P: after the crash, reveal serverSeed + crashPoint
+  Note over P: re-hash to confirm it matches commitHash,<br/>then re-derive crashPoint to prove fairness
+```
+
+Because SHA-256 is one-way, the published hash leaks nothing about the outcome — yet it commits the server to it. In the app, the **"✓ fair"** panel re-runs this entire derivation in your browser (`crypto.subtle`) and shows the **full seed and hash, click-to-copy**, so you can verify any round anywhere.
+
+**The house edge lives in exactly one place** (`src/rng.js`) and is applied as a haircut on *profit*, so it spreads smoothly across the curve instead of concentrating in 1.00× "rug pulls":
+
+```
+fair  = 1 / (1 - u)          # zero-edge curve: ≥ 1, median 2×, heavy tail
+crash = 1 + rtp · (fair - 1) # keep only `rtp` of the profit   (rtp = 0.94)
+```
+
+This yields `RTP(m) = m·rtp / (rtp + m − 1) ≤ 1` at every cash-out target `m` — the house always holds a small, provable edge, and never an unfair one.
+
+---
 
 ## Architecture
 
-Trainiator is a monolithic repository consisting of a Node.js/Express backend and a React single-page application frontend.
+A monolith by design: one Node process runs the HTTP server, the WebSocket server, and the authoritative game loop; the built React SPA is served from the **same origin** (so there's no CORS and WSS is free behind the platform's TLS).
 
-### Backend Overview
+```mermaid
+flowchart LR
+  subgraph B["Browser — React + Vite"]
+    UI["App.jsx<br/>UI & bet controls"]
+    Scene["TrainScene.jsx<br/>GSAP canvas"]
+    Cli["socket.io-client"]
+  end
+  subgraph N["Node — single authoritative process"]
+    IO["socket.io server"]
+    Loop["engine.js<br/>round loop (source of truth)"]
+    RNG["rng.js<br/>provably-fair crash point"]
+    Curve["curve.js<br/>multiplier growth"]
+    DB[("db.js<br/>SQLite — wallets, rounds, bets")]
+  end
+  Cli <-->|"state · riders · result · wallet · leaderboard"| IO
+  IO --> Loop
+  Loop --> RNG
+  Loop --> Curve
+  Loop --> DB
+  UI --> Cli
+  Scene -.->|"binds the live multiplier"| UI
+```
 
-- `server.js`: The entry point. Sets up the Express HTTP server, Socket.io WebSocket server, and instantiates the game engine and database. Handles player connections, rate limiting, and broadcasting presence/leaderboard stats.
-- `src/engine.js`: The **Authoritative Game Loop**. This ties the RNG, curve growth, and betting mechanics together. The server owns the clock and state; it alone decides when bets are valid, when to auto-cashout, and when the round crashes.
-- `src/rng.js`: The **Provably Fair RNG Engine**. The only place where outcomes are decided. Generates the server seed, the commit hash, and maps hashes to a crash multiplier curve with a defined RTP (Return to Player).
-- `src/curve.js`: Handles the mathematical growth of the multiplier over time. 
-- `src/db.js`: Persistence layer using `node:sqlite`. Stores wallets, bets, sessions, and the historic rounds to reconstruct the leaderboard.
-- `src/retention.js`: (Optional) Cosmetic retention layer that manages streaks and rewards (like free bet tokens) without modifying core gameplay odds.
+| Module | Responsibility |
+|--------|----------------|
+| `server.js` | Express + Socket.IO wiring, presence, per-socket rate limiting, leaderboard broadcast, token-gated admin, health check, hardening. |
+| `src/engine.js` | The authoritative loop: `betting → running → crashed`. Owns the clock; decides valid bets, auto-cash-outs, and settlement. Crash-safe (one bad round can't freeze the loop). |
+| `src/rng.js` | The *only* place outcomes are decided. Seed generation, the SHA-256 commitment, and the crash-point curve with the RTP edge. |
+| `src/curve.js` | Multiplier growth over time and the time-to-crash inverse. |
+| `src/db.js` | Persistence via built-in `node:sqlite` — wallets, rounds, bets, sessions, leaderboard. |
+| `src/retention.js` | Cosmetic-only streaks / free bets. Never touches the RNG. |
+| `web/` | React + Vite SPA: canvas scene, live rider list, achievements, in-browser fairness verifier. |
 
-### Frontend Overview
+---
 
-- Located in the `web/` directory, it is a standard **React + Vite** setup.
-- Communicates with the backend exclusively via Socket.io for live updates (`state`, `riders`, `result`, `wallet`, `leaderboard`).
-- Handles the visual representation of the multiplier (e.g., a train moving on a track) using animation libraries bound to the broadcast multiplier.
+## Tech stack & rationale
 
-## The Provably Fair System
+| Layer | Choice | Why |
+|-------|--------|-----|
+| Runtime | **Node 22, single process** | The game loop must own one clock — one process is one source of truth. (Horizontal scale is a documented non-goal; see the ADR.) |
+| Realtime | **Socket.IO** | Broadcast/rooms, auto-reconnect, and WS-with-fallback out of the box. |
+| Persistence | **`node:sqlite`** (built-in) | Zero-dependency, synchronous, single-writer — ideal for one process. Swap to `better-sqlite3`/Postgres if it outgrows a demo. |
+| Fairness | **Node `crypto` (SHA-256)** | Commit/reveal needs nothing more, and it's verifiable in any language. |
+| Frontend | **React 18 + Vite** | Fast HMR, small production bundle. |
+| Scene | **GSAP + Canvas 2D** | A single 60 fps ticker; the live multiplier drives scroll speed, wheel roll, smoke, and the warp-blur. |
+| UI motion | **Motion (Framer)** | Declarative enter/exit for toasts, modals, and history pills. |
+| Audio | **Web Audio API (procedural)** | Engine chug, whistle, and derailment are synthesized at runtime — no audio files to ship. |
 
-Trainiator uses a cryptographic commit/reveal scheme to guarantee fairness:
+---
 
-1. **Commit:** Before a round starts, the server generates a secret 32-byte `serverSeed`. It then publishes a SHA-256 hash of this seed and the `roundId` (the **commitment**). Because SHA-256 is one-way, no player can derive the crash point.
-2. **Lock:** The crash point is deterministically derived from this hash. Once bets are placed, the outcome is locked and cannot be manipulated by the server or players.
-3. **Reveal:** After the round crashes, the server reveals the original `serverSeed`. 
-4. **Verify:** Anyone can take the `serverSeed` and `roundId`, re-hash them to verify they match the original commitment, and re-calculate the crash point to prove it was fair.
+## Key engineering decisions
 
-*Note: The house edge is implemented as a mathematical limit on RTP (Return to Player), ensuring the casino maintains an advantage over time without resorting to unexpected instant 1.00x "rug pulls".*
+- **Authoritative server, untrusted client.** Every outcome is computed server-side and pushed; the browser renders and requests, but never decides. This is what makes the fairness guarantee meaningful.
+- **One shared round for everyone.** A single loop broadcasts one game to all connected players (live rider field, presence, leaderboard) — real multiplayer, not per-tab simulations.
+- **Fairness code is a sealed unit.** All of Part-2's retention/pacing lives outside `rng.js`; the RNG is pure and deterministic given `(seed, roundId, config)`.
+- **Same-origin serving.** Express serves `web/dist` and the socket on one origin → no CORS, WSS behind the host's TLS, and `git push` redeploys the whole thing.
+- **Hardened for public exposure.** Locked CORS, security headers, socket frame cap, crash-safe loop, and process handlers. See [`docs/production-readiness.md`](docs/production-readiness.md) for the full deploy/scale ADR.
 
-## Getting Started (Development)
+---
 
-### Prerequisites
-- Node.js (v22.5+ recommended for `node:sqlite` features)
-- npm
+## Running locally
 
-### 1. Install Dependencies
+**Prerequisites:** Node ≥ 22.5 (for `node:sqlite`) and npm.
 
-Install the backend dependencies:
 ```bash
+# 1. install
 npm install
+cd web && npm install && cd ..
+
+# 2a. dev — two processes, Vite proxies the socket to the server
+npm run server          # http://localhost:3000
+cd web && npm run dev   # http://localhost:5173  (proxies /socket.io -> :3000)
+
+# 2b. or run the production shape locally
+npm run build           # builds web/dist  (stop the Vite dev server first on Windows)
+npm start               # server serves the built SPA on :3000
 ```
 
-Install the frontend dependencies:
+Run the test suite (Node's built-in runner):
+
 ```bash
-cd web
-npm install
-cd ..
+npm test
 ```
 
-### 2. Run the Application
+---
 
-You can run the backend and frontend separately for development:
+## Project structure
 
-**Backend (Server):**
-```bash
-npm run server
 ```
-This starts the Express and Socket.io server on `http://localhost:3000`.
-
-**Frontend (Client):**
-```bash
-cd web
-npm run dev
+server.js                  Express + Socket.IO + game wiring, hardening, admin
+src/
+  engine.js                authoritative round loop
+  rng.js                   provably-fair crash point + house edge
+  curve.js                 multiplier growth / time-to-crash
+  db.js                    node:sqlite persistence
+  retention.js             cosmetic streaks & free bets (never touches RNG)
+  sim.js                   RTP simulation harness
+test/                      unit tests (rng, curve, engine, wallet, retention)
+web/
+  src/
+    App.jsx                UI, bet flow, achievements, fairness verifier
+    TrainScene.jsx         GSAP canvas railway scene
+    LiveBets.jsx           live rider field / your bet history
+    sound.js               procedural Web Audio
+    achievements.js        client-side cosmetic achievements
+docs/production-readiness.md   deployment & scaling ADR
+Dockerfile                 multi-stage production build
 ```
-This starts the Vite development server (usually on `http://localhost:5173`), which will proxy Socket.io requests to the backend.
 
-### Admin Panel
+---
 
-The backend exposes a simple admin route at `/admin` (or `/admin/stats`). In development, it defaults to a dev token (`trainiator-dev`). You can view current server stats, online users, and leaderboard metrics.
+## Deployment
 
-## Production Deployment
+Ships as a **single containerized Node process** on a persistent-process host (Fly.io / Render / Railway), serving the built frontend and the socket from one origin, with SQLite on a small persistent volume. The multi-stage [`Dockerfile`](Dockerfile) builds the SPA and runs the server with prod-only dependencies. Full rationale, trade-offs, and the (out-of-scope) horizontal-scaling path are in the [production-readiness ADR](docs/production-readiness.md).
 
-Trainiator is designed to be deployed as a **single containerized Node process** on a persistent-process PaaS (like Fly.io or Render).
+---
 
-- **Same-Origin Serving:** The built React frontend (`web/dist`) is served statically by the Express backend. This removes CORS complexities and allows Socket.io to connect over the same TLS connection.
-- **Single Instance Topology:** Because the authoritative game loop must reside in a single process to maintain game state, it is intended to run as a single instance.
-- **Persistence:** Ensure a persistent volume is attached for the SQLite database (`data/trainiator.sqlite`) so wallets and history persist across redeploys.
+## Disclaimer
 
-For a detailed deployment strategy, see `docs/production-readiness.md`.
+Trainiator is a **technical demonstration using fake currency only**. There is no real money, no payments, no accounts, and no financial transactions of any kind.

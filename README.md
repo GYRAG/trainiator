@@ -58,7 +58,7 @@ Two independent pieces of math drive the game: **where** the train derails (the 
 
 The round's SHA-256 commitment doubles as the entropy source. Its first 13 hex characters (52 bits) are read as an integer and scaled to a uniform variable:
 
-$$u \in [0, 1), \qquad u = \frac{\operatorname{int}_{16}\big(\text{hash}[0{:}13]\big)}{2^{52}}$$
+$$u \in [0, 1), \qquad u = \frac{\mathrm{int}_{16}\big(\text{hash}[0{:}13]\big)}{2^{52}}$$
 
 (An optional `instantCrashRate` slice can be reserved for forced 1.00× crashes; it defaults to 0.)
 
@@ -82,11 +82,11 @@ $$\text{crash} = 1 + \text{rtp}\,(X - 1), \qquad \text{rtp} = 0.94$$
 
 The return-to-player at a cash-out target $m$ follows directly. You win iff the crash reaches $m$, i.e. $X \ge 1 + \tfrac{m-1}{\text{rtp}}$, so
 
-$$P(\text{win at } m) = \frac{\text{rtp}}{\text{rtp} + m - 1}, \qquad \operatorname{RTP}(m) = m \cdot P(\text{win}) = \frac{m\,\text{rtp}}{\text{rtp} + m - 1}$$
+$$P(\text{win at } m) = \frac{\text{rtp}}{\text{rtp} + m - 1}, \qquad \mathrm{RTP}(m) = m \cdot P(\text{win}) = \frac{m\,\text{rtp}}{\text{rtp} + m - 1}$$
 
 Two properties fall out of this:
 
-- **The house is never at a disadvantage:** $\operatorname{RTP}(m) \le 1$ for every $m \ge 1$ (equality only at $m = 1$).
+- **The house is never at a disadvantage:** $\mathrm{RTP}(m) \le 1$ for every $m \ge 1$ (equality only at $m = 1$).
 - **The edge scales with ambition, smoothly** — ~0% right above 1×, **96.9%** at 2×, easing toward the floor of **94%** for high targets. No cliff, no rug-pull.
 
 The result is floored to two decimals and clamped to $\ge 1.00$. That flooring *alone* yields an instant 1.00× crash about **1%** of the time — $P(\text{crash} < 1.01) = 1 - \tfrac{1}{1.0106} \approx 0.0105$ — matching real crash games with no special-casing.
